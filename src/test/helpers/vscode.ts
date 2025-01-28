@@ -1,6 +1,8 @@
 import { SinonStub } from "sinon";
 import * as sinon from "sinon";
 import vscode from "vscode";
+import { TestCancellationTokenSource } from "./cancellation";
+import { TestUri } from "./uri";
 
 const getExtensionStub: SinonStub<
   [extensionId: string],
@@ -9,12 +11,10 @@ const getExtensionStub: SinonStub<
 > = sinon.stub();
 
 const vscodeStub: typeof vscode = {
+  Uri: TestUri,
   extensions: {
     getExtension: getExtensionStub,
-  } as Pick<
-    typeof vscode.extensions,
-    "getExtension"
-  > as typeof vscode.extensions,
-} as Pick<typeof vscode, "extensions"> as typeof vscode;
+  } as Partial<typeof vscode.extensions> as typeof vscode.extensions,
+} as Pick<typeof vscode, "Uri" | "extensions"> as typeof vscode;
 
-export { getExtensionStub, vscodeStub };
+export { TestUri, TestCancellationTokenSource, getExtensionStub, vscodeStub };
