@@ -9,12 +9,15 @@ import { PROMPT_SERVER_ALIAS, validateServerAlias } from "./server-picker";
  * assigned Colab server.
  */
 // TODO: Consider adding a notification that the rename was successful.
-// TODO: Add constraint for when there are no servers assigned.
 export async function renameServerAlias(
   vs: typeof vscode,
   serverStorage: ServerStorage,
 ): Promise<void> {
   const servers = await serverStorage.list();
+  if (servers.length === 0) {
+    return;
+  }
+
   const totalSteps = 2;
 
   await MultiStepInput.run(vs, async (input) => {
@@ -53,12 +56,15 @@ export async function renameServerAlias(
 // removed, a fallback kernel is selected but does not connect.
 // TODO: Consider adding a notification that the server was removed.
 // TODO: Update MultiStepInput to handle a single-step case.
-// TODO: Add constraint for when there are no servers assigned.
 export async function removeServer(
   vs: typeof vscode,
   assignmentManager: AssignmentManager,
 ) {
   const servers = await assignmentManager.getAssignedServers();
+  if (servers.length === 0) {
+    return;
+  }
+
   await MultiStepInput.run(vs, async (input) => {
     const selectedServer = (
       await input.showQuickPick({
