@@ -24,7 +24,7 @@ const CLIENT_NOT_SO_SECRET = "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";
 const AUTH_CLIENT = new OAuth2Client(
   CLIENT_ID,
   CLIENT_NOT_SO_SECRET,
-  `"{COLAB_DOMAIN}/vscode/redirect`,
+  `${COLAB_DOMAIN}/vscode/redirect`,
 );
 
 // Called when the extension is activated.
