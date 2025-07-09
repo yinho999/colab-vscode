@@ -1,5 +1,6 @@
 .env
 .vscode-test/
+*.vsix
 node_modules/
 out/
 src/colab-config.ts
