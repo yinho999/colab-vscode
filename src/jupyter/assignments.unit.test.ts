@@ -469,6 +469,43 @@ describe("AssignmentManager", () => {
     });
   });
 
+  describe("getLastKnownAssignedServers", () => {
+    it("returns an empty list when there are no stored servers", async () => {
+      expect(
+        await assignmentManager.getLastKnownAssignedServers(),
+      ).to.deep.equal([]);
+    });
+
+    it("returns all stored servers with connection info omitted", async () => {
+      const storedServers = [
+        { ...defaultServer, id: randomUUID() },
+        { ...defaultServer, id: randomUUID() },
+      ];
+      await serverStorage.store(storedServers);
+
+      const servers = await assignmentManager.getLastKnownAssignedServers();
+
+      expect(servers).to.deep.equal([
+        {
+          id: storedServers[0].id,
+          label: storedServers[0].label,
+          variant: storedServers[0].variant,
+          accelerator: storedServers[0].accelerator,
+          dateAssigned: storedServers[0].dateAssigned,
+          endpoint: storedServers[0].endpoint,
+        },
+        {
+          id: storedServers[1].id,
+          label: storedServers[1].label,
+          variant: storedServers[1].variant,
+          accelerator: storedServers[1].accelerator,
+          dateAssigned: storedServers[1].dateAssigned,
+          endpoint: storedServers[1].endpoint,
+        },
+      ]);
+    });
+  });
+
   describe("assignServer", () => {
     it("throws an error when the assignment does not include a URL to connect to", () => {
       colabClientStub.assign
