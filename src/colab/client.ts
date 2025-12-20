@@ -6,6 +6,7 @@
 
 import { UUID } from 'crypto';
 import * as https from 'https';
+import FormData from 'form-data';
 import fetch, { Request, RequestInit, Headers } from 'node-fetch';
 import { z } from 'zod';
 import { traceMethod } from '../common/logging/decorators';
@@ -31,6 +32,8 @@ import {
   RuntimeProxyInfoSchema,
   Shape,
   SessionSchema,
+  CredentialsPropagationResult,
+  CredentialsPropagationResultSchema,
 } from './api';
 import {
   ACCEPT_JSON_HEADER,
@@ -272,6 +275,58 @@ export class ColabClient {
         signal,
       },
       z.array(SessionSchema),
+    );
+  }
+
+  /**
+   * Propagates Drive credentials to the backend.
+   *
+   * @param endpoint - The assignment endpoint to propagate credentials to.
+   * @param params - Parameters for credentials propagation API.
+   * @param signal - Optional {@link AbortSignal} to cancel the request.
+   * @returns Whether propagation is successful. If not, an OAuth redirect URL
+   *   is returned to obtain the credentials.
+   */
+  async propagateDriveCredentials(
+    endpoint: string,
+    params: {
+      authType: 'dfs_ephemeral';
+      // This notebook's file ID.
+      fileId: string;
+      // If true, check if credentials are already propagated to the backend
+      // and/or obtain an OAuth redirect URL.
+      dryRun: boolean;
+    },
+    signal?: AbortSignal,
+  ): Promise<CredentialsPropagationResult> {
+    const url = new URL(
+      `${TUN_ENDPOINT}/credentials-propagation/${endpoint}`,
+      this.colabDomain,
+    );
+    url.searchParams.set('authtype', params.authType);
+    url.searchParams.set('version', '2');
+    url.searchParams.set('dryrun', String(params.dryRun));
+    url.searchParams.set('propagate', 'true');
+    url.searchParams.set('record', 'false');
+
+    const { token } = await this.issueRequest(
+      url,
+      { method: 'GET', signal },
+      z.object({ token: z.string() }),
+    );
+
+    const formBody = new FormData();
+    formBody.append('file_id', params.fileId);
+
+    return await this.issueRequest(
+      url,
+      {
+        method: 'POST',
+        headers: { [COLAB_XSRF_TOKEN_HEADER.key]: token },
+        body: formBody,
+        signal,
+      },
+      CredentialsPropagationResultSchema,
     );
   }
 

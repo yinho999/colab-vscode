@@ -415,7 +415,7 @@ describe('ColabClient', () => {
     const path = `/tun/m/unassign/${endpoint}`;
     const token = 'mock-xsrf-token';
     fetchStub
-      .withArgs(urlMatcher({ method: 'GET', host: COLAB_HOST, path: path }))
+      .withArgs(urlMatcher({ method: 'GET', host: COLAB_HOST, path }))
       .resolves(
         new Response(withXSSI(JSON.stringify({ token })), { status: 200 }),
       );
@@ -471,7 +471,7 @@ describe('ColabClient', () => {
           urlMatcher({
             method: 'GET',
             host: COLAB_HOST,
-            path: path,
+            path,
             queryParams: {
               endpoint: assignedServer.endpoint,
               port: '8080',
@@ -658,6 +658,64 @@ describe('ColabClient', () => {
 
     sinon.assert.calledOnce(fetchStub);
   });
+
+  describe('propagateDriveCredentials', () => {
+    for (const dryRun of [true, false]) {
+      it(`successfully propagates credentials${dryRun ? ' (dryRun)' : ''}`, async () => {
+        const endpoint = 'mock-server';
+        const path = `/tun/m/credentials-propagation/${endpoint}`;
+        const token = 'mock-xsrf-token';
+        const authType = 'dfs_ephemeral';
+        const queryParams = {
+          authtype: authType,
+          dryrun: String(dryRun),
+          record: 'false',
+          version: '2',
+          propagate: 'true',
+        };
+        const fileId = 'mock-file-id';
+        fetchStub
+          .withArgs(
+            urlMatcher({
+              method: 'GET',
+              host: COLAB_HOST,
+              path,
+              queryParams,
+            }),
+          )
+          .resolves(
+            new Response(withXSSI(JSON.stringify({ token })), {
+              status: 200,
+            }),
+          );
+        fetchStub
+          .withArgs(
+            urlMatcher({
+              method: 'POST',
+              host: COLAB_HOST,
+              path,
+              queryParams,
+              otherHeaders: { [COLAB_XSRF_TOKEN_HEADER.key]: token },
+              formBody: { file_id: fileId },
+            }),
+          )
+          .resolves(
+            new Response(withXSSI(JSON.stringify({ success: true })), {
+              status: 200,
+            }),
+          );
+
+        const result = client.propagateDriveCredentials(endpoint, {
+          authType,
+          fileId,
+          dryRun,
+        });
+
+        await expect(result).to.eventually.be.fulfilled;
+        sinon.assert.calledTwice(fetchStub);
+      });
+    }
+  });
 });
 
 function withXSSI(response: string): string {
@@ -670,6 +728,7 @@ export interface URLMatchOptions {
   path: string | RegExp;
   queryParams?: Record<string, string | RegExp>;
   otherHeaders?: Record<string, string>;
+  formBody?: Record<string, string | RegExp>;
   /** Whether the authuser query parameter should be included. Defaults to true. */
   withAuthUser?: boolean;
 }
@@ -781,6 +840,32 @@ export function urlMatcher(expected: URLMatchOptions): SinonMatcher {
       }
     }
 
+    // Check form body
+    if (expected.formBody) {
+      // Though `request` has a `formData()` method in its type definition, it's
+      // unimplemented in tests, hence parsing `request.body` manually.
+      const parsedBody = parseRequestBody(request.body);
+      for (const [key, expectedVal] of Object.entries(expected.formBody)) {
+        if (!(key in parsedBody)) {
+          reasons.push(`missing "${key}" in form body`);
+          continue;
+        }
+
+        const actualVal = parsedBody[key];
+        if (expectedVal instanceof RegExp) {
+          if (!expectedVal.test(actualVal)) {
+            reasons.push(
+              `form body "${key}" = "${actualVal}" does not match "${expectedVal.source}"`,
+            );
+          }
+        } else if (actualVal !== expectedVal) {
+          reasons.push(
+            `form body "${key}" = "${actualVal}" !== expected "${expectedVal}"`,
+          );
+        }
+      }
+    }
+
     if (reasons.length > 0) {
       reason = reasons.join('; ');
       return false;
@@ -788,4 +873,28 @@ export function urlMatcher(expected: URLMatchOptions): SinonMatcher {
 
     return true;
   }, reason || 'URL did not match expected pattern');
+}
+
+const formDataKeyPattern = /Content-Disposition: form-data; name="(.+)"/;
+
+function parseRequestBody(
+  body: ReadableStream<Uint8Array<ArrayBuffer>> | null,
+): Record<string, string> {
+  const results: Record<string, string> = {};
+  if (!body) return results;
+
+  // Though `request.body` is typed as a `ReadableStream`, it's not a real
+  // ReadableStream in tests. Doing a hacky cast to access its internal
+  // `_streams` property.
+  const bodyStreams = (body as unknown as { _streams: string[] })._streams;
+  for (let i = 0; i < bodyStreams.length; i++) {
+    const chunk = bodyStreams[i];
+    const keyMatch = formDataKeyPattern.exec(chunk);
+    if (keyMatch) {
+      const key = keyMatch[1];
+      const value = bodyStreams[i + 1];
+      results[key] = value;
+    }
+  }
+  return results;
 }
